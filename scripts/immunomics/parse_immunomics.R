@@ -12,6 +12,8 @@ library(plotUtils)
 immu_f <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/data/Immunomics_master_data_2025-01-10.RData"
 group_data_f <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/data/TIPS-Data_analysis/TIPS-Results_collection/TIPS_data_collection_2025-01-11/grouping_master_data_2025-01-10.RDS"
 subgroup_data_f <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/data/TIPS patient classification_sb_cs27022025.xlsx"
+clin_dat_cat_f <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/data/TIPS-Medical_data/RedCAP_categorial_values_2024-06-21.csv"
+clin_dat_num_f <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/data/TIPS-Medical_data/RedCAP_numerical_values_2024-06-21.csv"
 outDir <- "/Users/guillem.santamaria/Documents/postdoc/comput/TIPS/results/immunomics/parsed/"
 
 create_dir_if_not(outDir)
@@ -53,6 +55,14 @@ parse_immun <- function(immun, patient_info = NULL, type = "counts", max_zero_pr
                                                                              patient_info$patient_ID)]
                 immun_comm$clin_regrouping <- patient_info$clin_regrouping[match(immun_comm$patient_ID,
                                                                                  patient_info$patient_ID)]
+                immun_comm$geo_origin <- patient_info$geo_origin[match(immun_comm$patient_ID,
+                                                                       patient_info$patient_ID)]
+                immun_comm$gender <- patient_info$gender[match(immun_comm$patient_ID,
+                                                               patient_info$patient_ID)]
+                immun_comm$ethnicity <- patient_info$ethnicity[match(immun_comm$patient_ID,
+                                                                     patient_info$patient_ID)]
+                immun_comm$age <- patient_info$age[match(immun_comm$patient_ID,
+                                                         patient_info$patient_ID)]
         }
         rownames(immun_dat) <- immun_comm$immunomics_ID
         colnames(immun_comm) <- gsub("immunomics_ID",
@@ -263,6 +273,26 @@ table(group_data$clin_regrouping[group_data$group == "undefined"])
 
 not_in_groupDat <- unique(immunomics_counts_level1$patient_ID[!immunomics_counts_level1$patient_ID %in% group_data$patient_ID])
 
+clin_dat_cat <- read.table(clin_dat_cat_f, sep = "\t", header = T)
+clin_dat_num <- read.table(clin_dat_num_f, sep = "\t", header = T)
+View(clin_dat_cat)
+
+group_data$patient_ID %in% clin_dat_cat$Study.id
+group_data$patient_ID %in% clin_dat_num$Record.ID
+
+group_data$geo_origin <- clin_dat_cat$Data.Access.Group[match(group_data$patient_ID,
+                                                              clin_dat_cat$Study.id)]
+group_data$geo_origin[group_data$geo_origin == ""] <- NA
+group_data$gender <- clin_dat_cat$Gender[match(group_data$patient_ID,
+                                               clin_dat_cat$Study.id)]
+group_data$gender[group_data$gender == ""] <- NA
+group_data$ethnicity <- clin_dat_cat$Ethnicity[match(group_data$patient_ID,
+                                                     clin_dat_cat$Study.id)]
+group_data$ethnicity[group_data$ethnicity == ""] <- NA
+group_data$age <- clin_dat_num$Actual.age..years.[match(group_data$patient_ID,
+                                                        clin_dat_cat$Study.id)]
+group_data$age[group_data$age == ""] <- NA
+group_data$age <- as.numeric(gsub(",", ".", group_data$age, fixed = T))
 # Parse counts files
 ################################################################################
 

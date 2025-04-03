@@ -19,6 +19,8 @@ if (!require("M3C", quietly = T)){
         BiocManager::install("M3C", update = F)
 }
 library(M3C)
+if(!require("pdfCluster", quietly = T)) install.packages("pdfCluster")
+library(pdfCluster)
 
 # Directory stuff
 ################################################################################
@@ -512,6 +514,12 @@ for (i in seq_along(objs)){
                                                 filt_vars = "none",
                                                 aov_alpha = .05,
                                                 rownames = F)
+        hca_obj_by_geo <- plot_hca_list(obj,
+                                        slot = "stand",
+                                        col = "geo_origin",
+                                        filt_vars = "none",
+                                        aov_alpha = .05,
+                                        rownames = F)
         
         save_hca_plotlist(hca_obj_by_group,
                           outDir = hca_dir_treat,
@@ -521,6 +529,11 @@ for (i in seq_along(objs)){
         save_hca_plotlist(hca_obj_by_clin_subgrp,
                           outDir = hca_dir_treat,
                           tag = "clin_regrouping_hca",
+                          height = 10,
+                          width = 10)
+        save_hca_plotlist(hca_obj_by_geo,
+                          outDir = hca_dir_treat,
+                          tag = "geo_origin_hca",
                           height = 10,
                           width = 10)
 }
@@ -557,6 +570,95 @@ for (i in seq_along(objs)){
 
 saveRDS(objs, file = sprintf("%scounts_object_with_cons_clust_cats.rds",
                              cons_clust_dir))
+
+samp_info <- objs$imm_counts_parsed_LPS$l1$sample_info
+cons_clusts <- unique(samp_info$group_sepsis_consclust_subgroup)
+cons_clusts <- cons_clusts[!is.na(cons_clusts)]
+for (i in seq_along(cons_clusts)){
+        i <- 1
+        clust <- cons_clusts[i]
+        samps_in_clust <- samp_info[samp_info$group_sepsis_consclust_subgroup == clust, ]
+        unique_subgrps <- unique(samps_in_clust$clin_regrouping)
+        unique_subgrps <- unique_subgrps[!is.na(unique_subgrps)]
+        for (j in seq_along(unique_subgrps)){
+                j <- 1
+                sbgrp <- unique_subgrps[j]
+                samps_in_sbgrp <- samp_info$sample[samp_info$clin_regrouping == sbgrp]
+                samps_in_sbgrp <- samps_in_sbgrp[!is.na(samps_in_sbgrp)]
+                sbgrp_in_clust <- sum(samps_in_sbgrp %in% samps_in_clust$sample)
+                sbgrp_not_clust <- sum(!samps_in_sbgrp %in% samps_in_clust$sample)
+        }
+}
+
+cont_tab <- table(samp_info$clin_regrouping, samp_info$group_sepsis_consclust_subgroup)
+enrich_res <- data.frame()
+for (clust in colnames(cont_tab)){
+        for (sbgrp in rownames(cont_tab)){
+                overlap <- cont_tab[sbgrp, clust]
+                tot_clust <- sum(cont_tab[, clust])
+                tot_subgrp <- sum(cont_tab[sbgrp, ])
+                total <- sum(cont_tab)
+                cont <- matrix(c(overlap,
+                                 tot_clust - overlap,
+                                 tot_subgrp - overlap,
+                                 total - tot_clust - tot_subgrp + overlap),
+                               nrow = 2)
+                p_val <- fisher.test(cont, alternative = "greater")$p.value
+                to_bind <- data.frame(cons_clust = clust,
+                                      clin_regrouping = sbgrp,
+                                      overlap = overlap,
+                                      p_value = p_val)
+                enrich_res <- rbind(enrich_res, to_bind)
+        }
+}
+enrich_res$p_adj <- p.adjust(enrich_res$p_value, method = "BH")
+
+# Test whether samples included in grouping 1 are overrepresented in group 2.
+do_subclust_overrep <- function(samp_info, groups1_in, groups2_in,
+                                padj_method = "BH",
+                                alternative = "greater"){
+        cont_tab <- table(samp_info[, groups2_in], samp_info[, groups1_in])
+        enrich_res <- data.frame()
+        for (g1 in colnames(cont_tab)){
+                for (g2 in rownames(cont_tab)){
+                        overlap <- cont_tab[g2, g1]
+                        tot_clust <- sum(cont_tab[, g1])
+                        tot_subgrp <- sum(cont_tab[g2, ])
+                        total <- sum(cont_tab)
+                        cont <- matrix(c(overlap,
+                                         tot_clust - overlap,
+                                         tot_subgrp - overlap,
+                                         total - tot_clust - tot_subgrp + overlap),
+                                       nrow = 2)
+                        p_val <- fisher.test(cont,
+                                             alternative = alternative)$p.value
+                        to_bind <- data.frame(grouping_1_group = g1,
+                                              grouping_2_group = g2,
+                                              overlap = overlap,
+                                              p_value = p_val)
+                        enrich_res <- rbind(enrich_res, to_bind)
+                }
+        }
+        enrich_res$p_adj <- p.adjust(enrich_res$p_value, method = padj_method)
+        return(enrich_res)
+}
+
+
+obj <- objs$imm_counts_parsed_drr
+for (i in seq_along(obj)){
+        lvl <- names(obj)[i]
+        obj_level <- obj[[lvl]]
+        subclust_overrep <- do_subclust_overrep(obj_level$sample_info,
+                                                "group_sepsis_consclust_subgroup",
+                                                "clin_regrouping")
+        subclust_overrep <- subclust_overrep[subclust_overrep$p_adj <= 0.05, ]
+        obj_level$subclust_overrep <- subclust_overrep
+        obj[[lvl]] <- obj_level
+}
+
+ari <- adj.rand.index(obj_level$sample_info$clin_regrouping,
+                      obj_level$sample_info$group_sepsis_consclust_subgroup)
+
 
 # Do PCAs
 ################################################################################
